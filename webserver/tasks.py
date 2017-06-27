@@ -1,6 +1,10 @@
 import asyncio
 import aioredis
 import models
+from random import randint
+
+T10SEC = 10
+T10MIN = 10 * 60
 
 
 async def listen_to_redis(app):
@@ -27,14 +31,24 @@ async def start_background_tasks(app):
         user = users.get(username, None)
         if user is None:
             uid = int(username.split('-')[1])
-            users['username'] = user = models.User(redis, uid)
+            users[username] = user = models.User(redis, uid)
 
         timer = models.Timer(redis, user)
         timer_size = timername.split('-')[1]
         timer_size = timer_size if timer_size != 'None' else 0
         timer_size = int(timer_size)
-        timer_left = int(await redis.get(key))
+        timer_left = int(await redis.get(key) or 0)
         asyncio.ensure_future(timer.start(timer_left, timer_size))
+
+    if len(users) < 2000:
+        for _ in range(2000 - len(users)):
+            uid = await redis.incr('client_count')
+            print('new user', uid)
+            user = models.User(redis, uid)
+            asyncio.ensure_future(user.get_cell())
+            for _ in range(randint(1, 4)):
+                timer = models.Timer(redis, user)
+                asyncio.ensure_future(timer.start(randint(T10SEC, T10MIN)))
 
     # app['redis_listener'] = app.loop.create_task(listen_to_redis(app))
 

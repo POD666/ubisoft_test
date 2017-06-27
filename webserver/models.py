@@ -107,7 +107,7 @@ class User():
         old_key = self.name + ':cell-' + cell
         self.redis_data.pop(old_key, 0)
         self.redis.delete(old_key)
-        new_cell = 'x'.join(map(str, new_cell))
+        new_cell = 'x'.join(new_cell)
         print('move %s from %s to %s' % (direction, cell, new_cell))
         cell_key = self.name + ':cell-' + new_cell
         self.redis.set(cell_key, "*")

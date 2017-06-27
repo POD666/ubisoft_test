@@ -27,7 +27,6 @@ async def index(request):
         parameters = request.rel_url.query
         if parameters.get('all', None):
             data = await user.to_json(show_all=True)
-            print('all')
             return web.json_response(data)
     data = await user.to_json()
     return web.json_response(data)
