@@ -1,5 +1,6 @@
 import asyncio
 import aioredis
+import models
 
 
 async def listen_to_redis(app):
@@ -20,8 +21,20 @@ async def listen_to_redis(app):
 async def start_background_tasks(app):
     redis_connection = await aioredis.create_connection(('localhost', 6379))
     redis = app['redis'] = aioredis.Redis(redis_connection)
-    
+    users = {}
+    for key in await redis.keys('*:timer-*'):
+        username, timername = key.decode('utf-8').split(':')
+        user = users.get(username, None)
+        if user is None:
+            uid = int(username.split('-')[1])
+            users['username'] = user = models.User(redis, uid)
 
+        timer = models.Timer(redis, user)
+        timer_size = timername.split('-')[1]
+        timer_size = timer_size if timer_size != 'None' else 0
+        timer_size = int(timer_size)
+        timer_left = int(await redis.get(key))
+        asyncio.ensure_future(timer.start(timer_left, timer_size))
 
     # app['redis_listener'] = app.loop.create_task(listen_to_redis(app))
 

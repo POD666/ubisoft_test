@@ -16,11 +16,12 @@ def random_point():
 
 async def get_users_in_area(redis, cell):
     X, Y = key2cell(cell)
-    for key in await redis.keys('*:cell-'):
+    for key in await redis.keys('*:cell-*'):
+        key = key.decode('utf-8')
         x, y = key2cell(key)
         if (abs(X - x) < AREA_X) and (abs(Y - y) < AREA_Y):
             username, cell = key.split(':')
-            yield username, cell
+            yield username, cell.split('-')[1]
 
 
 def key2cell(key):
@@ -41,16 +42,14 @@ class Timer():
         self.user = user
 
     async def start(self, timeout, name=None):
-        if await self.user.get_timers_count() == 4:
-            return
-        timer_key = ''.join([self.user.name, ':timer-', name or str(timeout)])
-        self.timeout = timeout
-        self.redis.set(timer_key, self.timeout)
-        while self.timeout > 0:
-            self.redis.set(timer_key, self.timeout)
-            self.timeout -= 1
-            await asyncio.sleep(1)
-        self.redis.delete(timer_key)
+        timer_key = ''.join([self.user.name, ':timer-', str(name or timeout)])
+        if await self.user.get_timers_count() < 4:
+            self.timeout = timeout
+            while self.timeout > 0:
+                self.redis.set(timer_key, self.timeout)
+                self.timeout -= 1
+                await asyncio.sleep(1)
+        await self.redis.delete(timer_key)
 
     def remove(self):
         self.timeout = 0
@@ -69,26 +68,26 @@ class User():
 
     async def _get_all_data(self):
         data = getattr(self, 'redis_data', None)
-        if not data:
+        if data is None:
             keys = await self.redis.keys(self.name + '*')
             pipe = self.redis.pipeline()
             for key in keys:
                 pipe.get(key)
             values = await pipe.execute()
             keys = list(map(lambda s: s.decode("utf-8"), keys))
-            values = list(map(lambda s: s.decode("utf-8"), values))
+            values = list(map(lambda s: s.decode("utf-8") if s else s, values))
             data = dict(zip(keys, values))
             self.redis_data = data
-            print(data)
         return data
 
     async def get_timers_count(self):
         data = await self._get_all_data()
-        length = reduce(
-            lambda x, key: x + 1 if ':timer-' in key else 0,
-            data.keys(),
-            0  # initializer
-        )
+        length = sum(map(lambda key: int(':timer-' in key), data.keys()))
+        # length = reduce(
+        #     lambda x, key: x + 1 if ':timer-' in key else 0,
+        #     data.keys(),
+        #     0  # initializer
+        # )
         return length
 
     async def get_timers(self):
@@ -106,7 +105,7 @@ class User():
         }
         new_cell = DIRECTION[direction](*cell.split('x'))
         old_key = self.name + ':cell-' + cell
-        del self.redis_data[old_key]
+        self.redis_data.pop(old_key, 0)
         self.redis.delete(old_key)
         new_cell = 'x'.join(map(str, new_cell))
         print('move %s from %s to %s' % (direction, cell, new_cell))
@@ -129,19 +128,28 @@ class User():
             return cell
         return key.split(':cell-')[1]
 
-    async def get_field_of_view(self):
+    async def get_field_of_view(self, show_all):
         cell = await self.get_cell()
         players = []
         async for username, cell in get_users_in_area(self.redis, cell):
-            players.append({"name": username, "cell": cell})
+            if show_all:
+                user = User(self.redis, username.split('-')[1])
+                players.append({
+                    "name": username,
+                    "cell": cell,
+                    "timers": await user.get_timers()
+                })
+            else:
+                players.append({"name": username, "cell": cell})
         return players
 
-    async def to_json(self):
+    async def to_json(self, show_all=None):
         data = {
             'uid': self.uid,
             'name': self.name,
             'cell': await self.get_cell(),
+            'timers_count': await self.get_timers_count(),
             'timers': await self.get_timers(),
-            'field_of_view': await self.get_field_of_view(),
+            'field_of_view': await self.get_field_of_view(show_all),
         }
         return json.dumps(data)

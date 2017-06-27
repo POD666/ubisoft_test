@@ -23,6 +23,11 @@ async def index(request):
     if request.method == 'PUT':  # move player
         action = await request.json()
         await user.move_to(action['move'])
-
+    if request.method == 'GET':
+        parameters = request.rel_url.query
+        if parameters.get('all', None):
+            data = await user.to_json(show_all=True)
+            print('all')
+            return web.json_response(data)
     data = await user.to_json()
     return web.json_response(data)
