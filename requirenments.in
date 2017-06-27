@@ -1,0 +1,6 @@
+aiohttp==2.2.0
+aioredis==0.3.2
+aiohttp-devtools==0.4.1
+aiohttp_session[aioredis]==0.8.0
+cryptography
+fernet==1.0.1
